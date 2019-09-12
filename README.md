@@ -404,6 +404,71 @@ sudo hab svc load core/artifactory
 ```
 This will spin up an Artifactory instance, and you can use the following to log in: http://localhost:8081/artifactory/webapp/#/home
 
+### Backing up Builder Data
+
+The data that Builder stores is luckily fairly lightweight and thus the backup and DR strategy is pretty straightforward. With On-Prem Builder we have two types of data that a user may want to restore in the case of a disaster. First, the package and user metadata, which gets stored in a PostgreSQL instance and second, habitat artifacts (.harts) which get stored in whichever artifact storage backend you've chosen to use (Minio, S3, Artifactory).
+
+Ideally backups of the Builder cluster would be performed in lock-step however, due to the nature of the data that Builder stores there is very little concern with the timing of this operation. In the worst case if a package's metadata is missing from PostgreSQL, it can easily be repopulated by re-uploading the package with the `--force` flag like so `hab pkg upload <path to hartfile> -u <on-prem_url> --force`
+
+#### Database Backups
+
+The process of backing up Builder's PostgreSQL database should be no different than backing up any other PostgreSQL database. The process amounts to a pg_dump. If you have a backup strategy for other production instances of PostgreSQL we suggest you use the same strategy here with the `builder` database. Otherwise the process of a manual backup would be as follows:
+
+1. Shut down the API to ensure no active transactions are occuring. (Optional but preferred)
+        `hab svc stop habitat/builder-api`
+1. Switch to user `hab`
+        `sudo su - hab`
+1. Find your Postgres password 
+        `sudo cat /hab/svc/builder-api/config/config.toml`
+1. Export as envvar 
+        `export PGPASSWORD=<pw>`
+1. Run pgdump 
+        `/hab/pkgs/core/postgresql/<version>/<release>/bin/pg_dump --file=builder.dump --format=custom --host=<ip_of_pg_host> --dbname=builder`
+1. Start the api and verify 
+        `sudo hab svc start habitat/builder-api`
+
+Now the backup of your database has been dumped into the `builder.dump` file on your filesystem and can be moved or stored in whatever manner you see fit. For the backup to be useful in a DR scenario we obviously suggest moving the database dump somewhere else. An AWS S3 bucket would suffice for many but again we suggest you store the dump with the same strategy in which you store any other database dumps.
+
+#### Database Restore
+
+Much like the backup process, there is no magic in the database restore for Builder. As such, if you already have a restoration strategy your organization is using, feel free to continue using for the `builder` database. Otherwise, a manual restore should be performed as follows:
+
+1. Switch to user `hab`
+        `sudo su - hab`
+1. Find your Postgres password
+        `sudo cat /hab/svc/builder-api/config/config.toml`
+1. Export as envvar
+        `export PGPASSWORD=<pw>`
+1. Create the new builder database *
+        `/hab/pkgs/core/postgresql/<version>/<release>/bin/createdb -w -h <url_of_pg_host> -p <configured_pg_port> -U hab builder`
+1. Verify connectivity to the new database instance
+        `/hab/pkgs/core/postgresql/<version>/<release>/bin/psql --host=<url_of_pg_host> --dbname=builder`
+1. Restore the dump into the new DB
+        `/hab/pkgs/core/postgresql/<version>/<release>/bin/pg_restore --host=<url_of_pg_host> --dbname=builder builder.dump`
+1. Start the on-prem Builder services
+
+        * In some cases your version of Postgres might not have a createdb binary in which case you'll want to connect to database to run the create db command
+
+Just like that your database data should be restored and ready for new transactions!
+
+#### Artifact Backups
+The process of artifact backups is quite a bit more environmentally subjective than Postgres if only because we support more than one artifact storage backend. For the sake of these docs we will focus on Minio backups.
+
+Backing up Minio is also a bit subjective but more or less amounts to a filesystem backup. Because Minio stores its files on the filesystem  (unless you're using a non-standard configuration) any filesystem backup strategy you want to use should be fine whether thats disk snapshotting of some kind or data  mirroring, and rsync. Minio however also has the [minio client](https://docs.min.io/docs/minio-client-quickstart-guide.html) which provides a whole boatload of useful features and specifically allows the user to mirror a bucket to an alternative location on the filesystem or even a remote S3 bucket! Ideally you should _never_ directly/manually manipulate the files within Minio's buckets while it could be performing IO. Which means you should _always_ use the Minio client mentioned above to manipulate Minio data.
+
+A simple backup strategy might look like this:
+1. Shut down the API to ensure no active transactions are occuring. (Optional but preferred)
+        `hab svc stop habitat/builder-api`
+1. Mirror Minio data to an AWS S3 bucket. **
+        `mc mirror <local/minio/object/dir> <AWS_/S3_bucket>`
+** Another option here is to mirror to a different part of the filesystem, perhaps one that's NFS mounted or the like and then snapshotting it:
+        `mc mirror <local/minio/object/dir> <new/local/path>
+
+
+As mentioned before since this operation could be dramatically different for different environments Minio backup cannot be 100% prescriptive. But This should give you some ideas to explore.
+
+What's more, in the case that you're using Artifactory as the artifact store we would highly recommend reading [Artifactory's thoughts on back-ups](https://jfrog.com/whitepaper/best-practices-for-artifactory-backups-and-disaster-recovery/)
+
 ## Support
 
 You can also post any questions or issues on the [Habitat Forum](https://forums.habitat.sh/), on our [Slack channel](https://habitat-sh.slack.com), or file issues directly at the [Github repo](https://github.com/habitat-sh/on-prem-builder/issues).
