@@ -1,5 +1,7 @@
 # Chef Habitat Builder on-prem
 
+[![HIPAA](https://app.soluble.cloud/api/v1/public/badges/546f2639-9d6b-493e-884f-9a0c117adb93.svg)](https://app.soluble.cloud/repos/details/github.com/jvogt/on-prem-builder)  [![IaC](https://app.soluble.cloud/api/v1/public/badges/e4d4d1b1-5353-4564-92fd-6760ad78bdc1.svg)](https://app.soluble.cloud/repos/details/github.com/jvogt/on-prem-builder)  [![CIS](https://app.soluble.cloud/api/v1/public/badges/56799317-2c09-480c-b16c-32426e7d28d1.svg)](https://app.soluble.cloud/repos/details/github.com/jvogt/on-prem-builder)  
+
 **Umbrella Project**: [Chef Habitat](https://github.com/habitat-sh/habitat)
 
 **Project State**: [Active](https://github.com/chef/chef-oss-practices/blob/master/repo-management/repo-states.md#active)
